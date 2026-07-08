@@ -4,7 +4,7 @@ from pathlib import Path
 
 def _project_root() -> Path:
     """Return the project root directory (parent of src/)."""
-    return Path(__file__).resolve().parent.parent.parent
+    return Path(__file__).resolve().parent.parent.parent.parent
 
 
 @dataclass(frozen=True, slots=True)
