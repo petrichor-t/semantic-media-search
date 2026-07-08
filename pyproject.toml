@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "semantic-media-search"
+version = "0.1.0"
+description = "Local semantic search system for media files"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "sentence-transformers",
+    "Pillow",
+    "faiss-cpu",
+    "PySide6",
+]
+
+[project.scripts]
+semantic-media-search = "semantic_media_search.main:main"
+
+[project.gui-scripts]
+semantic-media-search-gui = "semantic_media_search.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

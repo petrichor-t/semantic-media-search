@@ -1,0 +1,37 @@
+# Virtual environment
+.venv/
+.venv.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Tests
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local data (generated at runtime)
+data/database/
+data/indexes/
+
+# User media
+local_media/
+
+# Temp/test scripts
+test_output.txt
+test_log.txt
+test_index_log.txt
+check_*.py
+
+
