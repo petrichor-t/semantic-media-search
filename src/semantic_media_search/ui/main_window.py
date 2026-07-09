@@ -48,10 +48,12 @@ QPushButton {
     color: #ffffff;
     border: 1px solid #333333;
     border-radius: 4px;
-    padding: 7px 18px;
+    padding: 7px 0px;
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0.3px;
+    min-width: 110px;
+    max-width: 110px;
 }
 QPushButton:hover {
     border-color: #ffffff;
@@ -430,19 +432,16 @@ class MainWindow(QMainWindow):
         self._last_query = self._search_input.text().strip()
         if not self._last_query:
             return
-        # Show "searching..." briefly
-        self._search_btn.setText("Searching…")
         self._search_btn.setEnabled(False)
-        self._search_btn.repaint()
+        self._status_lbl.setText("Searching…")
         try:
             results = self._search_service.search(self._last_query)
         except Exception as exc:
-            QMessageBox.critical(self, "Search Error", str(exc))
-            self._search_btn.setText("Search")
             self._search_btn.setEnabled(True)
+            QMessageBox.critical(self, "Search Error", str(exc))
             return
-        self._search_btn.setText("Search")
-        self._search_btn.setEnabled(True)
+        finally:
+            self._search_btn.setEnabled(True)
         self._display_results(results)
         self._rethink_btn.setEnabled(
             len(results) > 0 and self._search_service.has_reranker
