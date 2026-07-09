@@ -1,3 +1,6 @@
+import os as _os
+import shutil
+import tempfile
 from pathlib import Path
 
 import faiss
@@ -90,8 +93,16 @@ class VectorIndex:
         return scores[0], indices[0]
 
     def save(self, path: Path) -> None:
+        """Save index atomically using a temp file to avoid Unicode path issues."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        faiss.write_index(self._index, str(path))
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            suffix=".faiss", prefix="index_tmp_", dir=str(path.parent)
+        )
+        try:
+            faiss.write_index(self._index, tmp_name)
+        finally:
+            _os.close(tmp_fd)
+        shutil.move(tmp_name, str(path))
 
     @classmethod
     def load(cls, path: Path) -> "VectorIndex":

@@ -117,10 +117,8 @@ class IndexingService:
                     )
                 )
 
-        # 4. Save index atomically
-        tmp_path = self._index_path.with_suffix(".faiss.tmp")
-        index.save(tmp_path)
-        tmp_path.replace(self._index_path)
+        # 4. Save index (atomic via tempfile — safe for Unicode paths)
+        index.save(self._index_path)
         logger.info(
             "Index saved: %s (%d vectors)", self._index_path, index.size
         )
