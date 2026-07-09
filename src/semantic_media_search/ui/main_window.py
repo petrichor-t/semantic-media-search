@@ -449,26 +449,35 @@ class MainWindow(QMainWindow):
         self._status_lbl.setText(f"{len(results)} results")
 
     def _tick_thinking(self) -> None:
+        import time as _time
         self._think_dots = (self._think_dots + 1) % 5
         dots = "." * self._think_dots + " " * (4 - self._think_dots)
+        elapsed = _time.perf_counter() - self._rethink_start_time
         self._rethink_btn.setText(f"Thinking{dots}")
+        self._status_lbl.setText(
+            f"Depth {self._rethink_depth}, elapsed {elapsed:.1f}s / {self._rethink_timeout}s"
+        )
 
     def _on_rethink(self) -> None:
         if not self._last_query:
             return
-        depth = self._depth_slider.value()
-        timeout = self._timeout_spin.value()
+        import time as _time
+        self._rethink_start_time = _time.perf_counter()
+        self._rethink_depth = self._depth_slider.value()
+        self._rethink_timeout = self._timeout_spin.value()
 
-        # Start animation
+        # Show progress bar in indeterminate mode
+        self._progress.setVisible(True)
+        self._progress.setRange(0, 0)
+        self._progress_lbl.setText(f"Rethinking depth {self._rethink_depth}...")
         self._rethink_btn.setEnabled(False)
         self._think_dots = 0
         self._think_timer.start(200)
-        self._status_lbl.setText(f"Rethinking depth {depth}, timeout {timeout}s…")
+        self._status_lbl.setText(f"Depth {self._rethink_depth}, timeout {self._rethink_timeout}s…")
 
-        # Run in background thread so UI stays responsive
         self._rethink_thread = QThread()
         self._rethink_worker = RethinkWorker(
-            self._search_service, self._last_query, depth, timeout
+            self._search_service, self._last_query, self._rethink_depth, self._rethink_timeout
         )
         self._rethink_worker.moveToThread(self._rethink_thread)
         self._rethink_thread.started.connect(self._rethink_worker.run)
@@ -481,14 +490,22 @@ class MainWindow(QMainWindow):
         self._rethink_thread.start()
 
     def _on_rethink_done(self, results: list) -> None:
+        import time as _time
+        elapsed = _time.perf_counter() - self._rethink_start_time
         self._think_timer.stop()
+        self._progress.setVisible(False)
+        self._progress_lbl.setText("")
         self._rethink_btn.setText("Rethink")
         self._rethink_btn.setEnabled(True)
         self._display_results(results)
-        self._status_lbl.setText(f"{len(results)} results")
+        self._status_lbl.setText(
+            f"{len(results)} results in {elapsed:.1f}s (depth {self._rethink_depth})"
+        )
 
     def _on_rethink_error(self, error_msg: str) -> None:
         self._think_timer.stop()
+        self._progress.setVisible(False)
+        self._progress_lbl.setText("")
         self._rethink_btn.setText("Rethink")
         self._rethink_btn.setEnabled(True)
         QMessageBox.critical(self, "Rethink Error", error_msg)
