@@ -13,23 +13,42 @@ from semantic_media_search.storage.database import Database
 from semantic_media_search.storage.file_repository import FileRepository
 from semantic_media_search.ui.main_window import MainWindow
 
+logger = logging.getLogger(__name__)
 
-def _detect_device() -> tuple[str, str]:
-    """Return (device_string, device_name_for_display)."""
+
+def _detect_device(database: Database) -> tuple[str, str, str]:
+    """
+    Read user preference from app_settings (if set), otherwise auto-detect.
+    Returns (torch_device, settings_value, display_label).
+    settings_value is "cpu" | "cuda" | "auto"
+    """
+    # Check user preference first
+    try:
+        conn = database.connect()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'device'"
+        ).fetchone()
+        conn.close()
+        if row and row["value"] in ("cpu", "cuda"):
+            pref = row["value"]
+            label = pref.upper()
+            return (pref, pref, label)
+    except Exception:
+        pass  # table may not exist yet
+
+    # Auto-detect
     try:
         import torch
         if torch.cuda.is_available():
-            name = torch.cuda.get_device_name(0)
-            return ("cuda", f"GPU: {name}")
+            return ("cuda", "auto", "GPU")
     except Exception:
         pass
-    return ("cpu", "CPU")
+    return ("cpu", "auto", "CPU")
 
 
 def build_application() -> MainWindow:
     """Composition root — assemble all dependencies and return the main window."""
     settings = Settings()
-    device, device_info = _detect_device()
 
     # ---- Storage layer ----
     database = Database(settings.database_path)
@@ -38,11 +57,14 @@ def build_application() -> MainWindow:
     file_repository = FileRepository(database)
     file_scanner = MediaScanner()
 
-    # ---- ML models (auto GPU) ----
+    # ---- Device selection ----
+    torch_device, setting_value, display_label = _detect_device(database)
+
+    # ---- ML models ----
     from sentence_transformers import SentenceTransformer
 
-    image_model = SentenceTransformer(settings.image_model_name, device=device)
-    text_model = SentenceTransformer(settings.text_model_name, device=device)
+    image_model = SentenceTransformer(settings.image_model_name, device=torch_device)
+    text_model = SentenceTransformer(settings.text_model_name, device=torch_device)
 
     image_encoder = ImageEncoder(image_model)
     text_encoder = TextEncoder(text_model)
@@ -70,7 +92,8 @@ def build_application() -> MainWindow:
     return MainWindow(
         indexing_service=indexing_service,
         search_service=search_service,
-        device_info=device_info,
+        database=database,
+        device_info=display_label,
     )
 
 

@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from PySide6.QtCore import QSize, QThread, QUrl, Qt
+from PySide6.QtCore import QThread, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -12,7 +13,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QStatusBar,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -22,158 +22,240 @@ from PySide6.QtWidgets import (
 from semantic_media_search.domain.models import SearchResult
 from semantic_media_search.services.indexing_service import IndexingService
 from semantic_media_search.services.search_service import SearchService
+from semantic_media_search.storage.database import Database
 from semantic_media_search.ui.indexing_worker import IndexingWorker
 
-DARK_STYLE = """
-QMainWindow {
-    background-color: #1a1a2e;
-}
-QWidget {
-    background-color: #1a1a2e;
-    color: #e0e0e0;
-    font-family: "Segoe UI", Arial, sans-serif;
+STYLE = """
+* {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     font-size: 13px;
 }
+QMainWindow {
+    background-color: #000000;
+}
+QWidget {
+    background-color: #000000;
+    color: #ffffff;
+}
 QLabel {
-    color: #c0c0d0;
     background: transparent;
     border: none;
 }
 QPushButton {
-    background-color: #0f3460;
-    color: #e0e0e0;
-    border: 1px solid #16213e;
-    border-radius: 6px;
-    padding: 8px 20px;
-    font-weight: bold;
-    min-height: 20px;
+    background: transparent;
+    color: #ffffff;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    padding: 7px 18px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
 }
 QPushButton:hover {
-    background-color: #16578a;
+    border-color: #ffffff;
 }
 QPushButton:pressed {
-    background-color: #0a2647;
+    background: #1a1a1a;
 }
 QPushButton:disabled {
-    background-color: #2a2a3e;
-    color: #606070;
+    color: #444444;
+    border-color: #222222;
 }
 QLineEdit {
-    background-color: #16213e;
-    border: 2px solid #0f3460;
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: #e0e0e0;
-    font-size: 14px;
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    padding: 8px 14px;
+    color: #ffffff;
+    font-size: 13px;
+    letter-spacing: 0.2px;
 }
 QLineEdit:focus {
-    border-color: #e94560;
+    border-color: #ffffff;
+}
+QComboBox {
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    padding: 5px 12px;
+    color: #ffffff;
+    font-size: 12px;
+    min-width: 80px;
+}
+QComboBox:hover {
+    border-color: #ffffff;
+}
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+QComboBox::down-arrow {
+    image: none;
+    border: none;
+}
+QComboBox QAbstractItemView {
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    color: #ffffff;
+    selection-background-color: #ffffff;
+    selection-color: #000000;
 }
 QProgressBar {
-    background-color: #16213e;
-    border: 1px solid #0f3460;
-    border-radius: 4px;
+    background-color: #0a0a0a;
+    border: 1px solid #333333;
+    border-radius: 3px;
     text-align: center;
-    color: #e0e0e0;
-    height: 18px;
+    color: #888888;
+    height: 16px;
+    font-size: 10px;
 }
 QProgressBar::chunk {
-    background-color: #e94560;
-    border-radius: 3px;
+    background-color: #ffffff;
+    border-radius: 2px;
 }
 QTableWidget {
-    background-color: #16213e;
-    alternate-background-color: #1a1a3e;
-    border: 1px solid #0f3460;
-    border-radius: 6px;
-    gridline-color: #2a2a4e;
-    selection-background-color: #e94560;
-    selection-color: white;
+    background-color: #000000;
+    border: 1px solid #222222;
+    border-radius: 4px;
+    gridline-color: #111111;
+    selection-background-color: #ffffff;
+    selection-color: #000000;
 }
 QTableWidget::item {
-    padding: 6px;
+    padding: 8px 10px;
 }
 QHeaderView::section {
-    background-color: #0f3460;
-    color: #e0e0e0;
-    border: 1px solid #1a1a2e;
-    padding: 8px;
-    font-weight: bold;
+    background-color: #000000;
+    color: #ffffff;
+    border: none;
+    border-bottom: 1px solid #333333;
+    padding: 10px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+QHeaderView {
+    background-color: #000000;
 }
 QTableWidget QTableCornerButton::section {
-    background-color: #0f3460;
-    border: 1px solid #1a1a2e;
+    background-color: #000000;
+    border-bottom: 1px solid #333333;
+}
+QScrollBar:vertical {
+    background: #000000;
+    width: 8px;
+    border: none;
+}
+QScrollBar::handle:vertical {
+    background: #333333;
+    border-radius: 4px;
+    min-height: 40px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #555555;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+QScrollBar:horizontal {
+    background: #000000;
+    height: 8px;
+    border: none;
+}
+QScrollBar::handle:horizontal {
+    background: #333333;
+    border-radius: 4px;
+    min-width: 40px;
+}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
 }
 QFileDialog {
-    background-color: #1a1a2e;
+    background-color: #000000;
 }
 QMessageBox {
-    background-color: #1a1a2e;
-}
-QStatusBar {
-    background-color: #0f3460;
-    color: #808090;
-    border-top: 1px solid #16213e;
+    background-color: #000000;
+    color: #ffffff;
 }
 """
 
 
 class MainWindow(QMainWindow):
-    """Beautiful dark-themed semantic search application."""
+    """Minimalist black‑theme semantic search application."""
 
     def __init__(
         self,
         indexing_service: IndexingService,
         search_service: SearchService,
-        device_info: str = "CPU",
+        database: Database,
+        device_info: str = "GPU",
     ) -> None:
         super().__init__()
         self._indexing_service = indexing_service
         self._search_service = search_service
+        self._database = database
         self._device_info = device_info
         self._selected_folder: Path | None = None
         self._indexing_thread: QThread | None = None
         self._worker: IndexingWorker | None = None
 
         self.setWindowTitle("Semantic Media Search")
-        self.setMinimumSize(1000, 680)
-        self.setStyleSheet(DARK_STYLE)
+        self.setMinimumSize(960, 640)
+        self.setStyleSheet(STYLE)
 
         self._build_ui()
-        self._status_bar.showMessage(f"  Device: {device_info}  |  No folder selected")
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
         root.setSpacing(10)
-        root.setContentsMargins(14, 14, 14, 14)
+        root.setContentsMargins(20, 20, 20, 20)
 
-        # ---- Title ----
+        # ---- Top bar: title + device selector ----
+        top = QHBoxLayout()
         title = QLabel("Semantic Media Search")
-        title.setStyleSheet(
-            "font-size: 20px; font-weight: bold; color: #e94560; padding: 4px 0;"
-        )
-        root.addWidget(title)
+        title.setStyleSheet("font-size: 18px; font-weight: 600; letter-spacing: -0.3px;")
+        top.addWidget(title)
+        top.addStretch()
+
+        device_lbl = QLabel("Device")
+        device_lbl.setStyleSheet("font-size: 11px; color: #888888; letter-spacing: 0.5px; text-transform: uppercase;")
+        top.addWidget(device_lbl)
+
+        self._device_combo = QComboBox()
+        self._device_combo.addItems(["GPU", "CPU"])
+        self._device_combo.setCurrentText(self._device_info)
+        self._device_combo.currentTextChanged.connect(self._on_device_changed)
+        top.addWidget(self._device_combo)
+        root.addLayout(top)
 
         # ---- Folder row ----
         folder_row = QHBoxLayout()
-        self._folder_btn = QPushButton("  Select Folder")
+        self._folder_btn = QPushButton("Select Folder")
         self._folder_btn.clicked.connect(self._on_select_folder)
         self._folder_lbl = QLabel("No folder selected")
-        self._folder_lbl.setStyleSheet("color: #707080; font-style: italic;")
+        self._folder_lbl.setStyleSheet("color: #666666; font-size: 12px;")
         folder_row.addWidget(self._folder_btn)
         folder_row.addWidget(self._folder_lbl, 1)
         root.addLayout(folder_row)
 
         # ---- Indexing row ----
         idx_row = QHBoxLayout()
-        self._index_btn = QPushButton("  Index")
+        self._index_btn = QPushButton("Index")
         self._index_btn.setEnabled(False)
         self._index_btn.clicked.connect(self._on_index)
         self._progress = QProgressBar()
         self._progress.setVisible(False)
         self._progress_lbl = QLabel("")
+        self._progress_lbl.setStyleSheet("color: #666666; font-size: 11px;")
         idx_row.addWidget(self._index_btn)
         idx_row.addWidget(self._progress, 1)
         idx_row.addWidget(self._progress_lbl)
@@ -182,47 +264,67 @@ class MainWindow(QMainWindow):
         # ---- Search row ----
         search_row = QHBoxLayout()
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search... e.g. beach sunset, mountain landscape")
+        self._search_input.setPlaceholderText("Search images by description...")
         self._search_input.returnPressed.connect(self._on_search)
-        self._search_btn = QPushButton("  Search")
+        self._search_btn = QPushButton("Search")
         self._search_btn.clicked.connect(self._on_search)
         search_row.addWidget(self._search_input, 1)
         search_row.addWidget(self._search_btn)
         root.addLayout(search_row)
 
-        # ---- Status label ----
+        # ---- Status ----
         self._status_lbl = QLabel("")
-        self._status_lbl.setStyleSheet("color: #e94560; font-size: 12px; padding: 2px 0;")
+        self._status_lbl.setStyleSheet("color: #666666; font-size: 11px;")
         root.addWidget(self._status_lbl)
 
         # ---- Results table ----
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Name", "Type", "Path", "Score"])
-        self._table.setAlternatingRowColors(True)
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self._table.setColumnWidth(0, 200)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self._table.setColumnWidth(0, 220)
+        self._table.setColumnWidth(1, 60)
+        self._table.setColumnWidth(3, 70)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setShowGrid(False)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.doubleClicked.connect(self._on_open_file)
-        self._table.setIconSize(QSize(48, 48))
         root.addWidget(self._table, 1)
 
-        # ---- Status bar ----
-        self._status_bar = QStatusBar()
-        self.setStatusBar(self._status_bar)
+    # ------------------------------------------------------------------
+    # Slots
+    # ------------------------------------------------------------------
 
-    # ---- Slots ----
+    def _on_device_changed(self, device: str) -> None:
+        if device == self._device_info:
+            return
+        self._device_info = device
+        # Persist preference
+        conn = self._database.connect()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('device', ?)",
+                (device.lower(),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        QMessageBox.information(
+            self,
+            "Device Changed",
+            f"Device set to {device}.\nRestart the application to apply.",
+        )
 
     def _on_select_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Select folder with images")
         if folder:
             self._selected_folder = Path(folder)
             self._folder_lbl.setText(str(self._selected_folder))
-            self._folder_lbl.setStyleSheet("color: #e0e0e0; font-style: normal;")
+            self._folder_lbl.setStyleSheet("color: #cccccc; font-size: 12px;")
             self._index_btn.setEnabled(True)
             self._status_lbl.setText("")
 
@@ -234,7 +336,7 @@ class MainWindow(QMainWindow):
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)
         self._progress_lbl.setText("Scanning...")
-        self._status_lbl.setText("Indexing...")
+        self._status_lbl.setText("Indexing…")
 
         self._indexing_thread = QThread()
         self._worker = IndexingWorker(self._indexing_service, self._selected_folder)
@@ -286,23 +388,20 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Search Error", str(exc))
             return
         self._display_results(results)
-        self._status_lbl.setText(f"'{query}' — {len(results)} results")
+        self._status_lbl.setText(f"{len(results)} results")
 
     def _display_results(self, results: list[SearchResult]) -> None:
         self._table.setRowCount(0)
         self._table.setRowCount(len(results))
         for row, r in enumerate(results):
-            name = QTableWidgetItem(r.name)
-            name.setIcon(QIcon(str(r.path)))
-            self._table.setItem(row, 0, name)
+            name_item = QTableWidgetItem(r.name)
+            name_item.setIcon(QIcon(str(r.path)))
+            self._table.setItem(row, 0, name_item)
             self._table.setItem(row, 1, QTableWidgetItem(r.media_type.value))
             self._table.setItem(row, 2, QTableWidgetItem(str(r.path)))
-            score = QTableWidgetItem(f"{r.score:.4f}")
-            if r.score >= 0.7:
-                score.setForeground(Qt.green)
-            elif r.score >= 0.5:
-                score.setForeground(Qt.yellow)
-            self._table.setItem(row, 3, score)
+            score_item = QTableWidgetItem(f"{r.score:.4f}")
+            score_item.setTextAlignment(0x0084)  # AlignRight | AlignVCenter
+            self._table.setItem(row, 3, score_item)
 
     def _on_open_file(self, index) -> None:
         row = index.row()
