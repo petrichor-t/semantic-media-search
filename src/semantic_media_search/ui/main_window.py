@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QThread, QUrl, Qt
+from PySide6.QtCore import QThread, QTimer, QUrl, Qt
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
@@ -229,6 +229,9 @@ class MainWindow(QMainWindow):
         self._indexing_thread: QThread | None = None
         self._worker: IndexingWorker | None = None
         self._last_query: str = ""
+        self._think_timer = QTimer()
+        self._think_timer.timeout.connect(self._tick_thinking)
+        self._think_dots = 0
 
         self.setWindowTitle("Semantic Media Search")
         self.setMinimumSize(960, 680)
@@ -445,21 +448,33 @@ class MainWindow(QMainWindow):
         )
         self._status_lbl.setText(f"{len(results)} results")
 
+    def _tick_thinking(self) -> None:
+        self._think_dots = (self._think_dots + 1) % 5
+        dots = "." * self._think_dots + " " * (4 - self._think_dots)
+        self._rethink_btn.setText(f"Thinking{dots}")
+
     def _on_rethink(self) -> None:
         if not self._last_query:
             return
         depth = self._depth_slider.value()
         timeout = self._timeout_spin.value()
         self._rethink_btn.setEnabled(False)
-        self._status_lbl.setText(f"Rethinking with depth {depth}, timeout {timeout}s…")
+        self._think_dots = 0
+        self._think_timer.start(200)
+        self._status_lbl.setText(f"Rethinking depth {depth}, timeout {timeout}s…")
         try:
             results = self._search_service.rerank(
                 self._last_query, depth=depth, timeout_seconds=timeout
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Rethink Error", str(exc))
+            self._think_timer.stop()
+            self._rethink_btn.setText("Rethink")
             self._rethink_btn.setEnabled(True)
+            QMessageBox.critical(self, "Rethink Error", str(exc))
             return
+        finally:
+            self._think_timer.stop()
+            self._rethink_btn.setText("Rethink")
         self._display_results(results)
         self._rethink_btn.setEnabled(True)
         self._status_lbl.setText(
