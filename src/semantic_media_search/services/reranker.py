@@ -135,7 +135,7 @@ class AdaptiveReranker:
 
         ranked.sort(key=lambda x: x[0], reverse=True)
         elapsed = time.perf_counter() - start_total
-        passes_used = max(len(v[1]) for v in accumulated.values()) if accumulated else 0
+        passes_used = max(len(v) for v in accumulated.values()) if accumulated else 0
         logger.info(
             "Reranked %d/%d images in %.1fs (%d passes)", len(ranked), N, elapsed, passes_used
         )
