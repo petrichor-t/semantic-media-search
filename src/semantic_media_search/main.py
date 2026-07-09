@@ -4,7 +4,6 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from semantic_media_search.config.settings import Settings
-from semantic_media_search.indexing.vector_index import VectorIndex
 from semantic_media_search.ml.image_encoder import ImageEncoder
 from semantic_media_search.ml.text_encoder import TextEncoder
 from semantic_media_search.scanning.media_scanner import MediaScanner
@@ -15,9 +14,22 @@ from semantic_media_search.storage.file_repository import FileRepository
 from semantic_media_search.ui.main_window import MainWindow
 
 
+def _detect_device() -> tuple[str, str]:
+    """Return (device_string, device_name_for_display)."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            name = torch.cuda.get_device_name(0)
+            return ("cuda", f"GPU: {name}")
+    except Exception:
+        pass
+    return ("cpu", "CPU")
+
+
 def build_application() -> MainWindow:
     """Composition root — assemble all dependencies and return the main window."""
     settings = Settings()
+    device, device_info = _detect_device()
 
     # ---- Storage layer ----
     database = Database(settings.database_path)
@@ -26,11 +38,11 @@ def build_application() -> MainWindow:
     file_repository = FileRepository(database)
     file_scanner = MediaScanner()
 
-    # ---- ML models ----
+    # ---- ML models (auto GPU) ----
     from sentence_transformers import SentenceTransformer
 
-    image_model = SentenceTransformer(settings.image_model_name)
-    text_model = SentenceTransformer(settings.text_model_name)
+    image_model = SentenceTransformer(settings.image_model_name, device=device)
+    text_model = SentenceTransformer(settings.text_model_name, device=device)
 
     image_encoder = ImageEncoder(image_model)
     text_encoder = TextEncoder(text_model)
@@ -58,6 +70,7 @@ def build_application() -> MainWindow:
     return MainWindow(
         indexing_service=indexing_service,
         search_service=search_service,
+        device_info=device_info,
     )
 
 
