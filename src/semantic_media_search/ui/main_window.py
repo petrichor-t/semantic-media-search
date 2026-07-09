@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QThread, QTimer, QUrl, Qt, Signal, QObject, Slot
+from PySide6.QtCore import QThread, QTimer, QUrl, Signal, QObject, Slot
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QSlider,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -109,20 +108,6 @@ QProgressBar::chunk {
     background-color: #ffffff;
     border-radius: 2px;
 }
-QSlider::groove:horizontal {
-    background: #0a0a0a;
-    border: 1px solid #333333;
-    border-radius: 3px;
-    height: 6px;
-}
-QSlider::handle:horizontal {
-    background: #ffffff;
-    border: none;
-    width: 14px;
-    height: 14px;
-    margin: -5px 0;
-    border-radius: 7px;
-}
 QSpinBox {
     background-color: #0a0a0a;
     border: 1px solid #333333;
@@ -194,18 +179,17 @@ class RethinkWorker(QObject):
     finished = Signal(list)
     failed = Signal(str)
 
-    def __init__(self, search_service: SearchService, query: str, depth: int, timeout: int):
+    def __init__(self, search_service: SearchService, query: str, think_time: int):
         super().__init__()
         self._service = search_service
         self._query = query
-        self._depth = depth
-        self._timeout = timeout
+        self._think_time = think_time
 
     @Slot()
     def run(self) -> None:
         try:
-            results = self._service.rerank(
-                self._query, depth=self._depth, timeout_seconds=self._timeout
+            results = self._service.rerank_adaptive(
+                self._query, think_time=float(self._think_time)
             )
             self.finished.emit(results)
         except Exception as exc:
@@ -213,7 +197,7 @@ class RethinkWorker(QObject):
 
 
 class MainWindow(QMainWindow):
-    """Minimalist black-theme semantic search with iterative rethink."""
+    """Minimalist black-theme semantic search with adaptive rethink."""
 
     def __init__(
         self,
@@ -299,33 +283,28 @@ class MainWindow(QMainWindow):
         search_row.addWidget(self._search_btn)
         root.addLayout(search_row)
 
-        # Rethink
+        # Rethink — only Think time, no Depth, no magic numbers
         rethink_row = QHBoxLayout()
         self._rethink_btn = QPushButton("Rethink")
         self._rethink_btn.setEnabled(False)
         self._rethink_btn.clicked.connect(self._on_rethink)
-        depth_lbl = QLabel("Depth")
-        depth_lbl.setStyleSheet("color: #888888; font-size: 11px; text-transform: uppercase;")
-        self._depth_slider = QSlider(Qt.Horizontal)
-        self._depth_slider.setRange(20, 500)
-        self._depth_slider.setValue(50)
-        self._depth_slider.setFixedWidth(120)
-        self._depth_val = QLabel("50")
-        self._depth_val.setStyleSheet("color: #cccccc; font-size: 11px; min-width: 30px;")
-        self._depth_slider.valueChanged.connect(lambda v: self._depth_val.setText(str(v)))
-        timeout_lbl = QLabel("Timeout")
-        timeout_lbl.setStyleSheet("color: #888888; font-size: 11px; text-transform: uppercase; margin-left: 12px;")
-        self._timeout_spin = QSpinBox()
-        self._timeout_spin.setRange(1, 30)
-        self._timeout_spin.setValue(5)
-        self._timeout_spin.setSuffix("s")
-        self._timeout_spin.setFixedWidth(70)
+
+        think_lbl = QLabel("Think time")
+        think_lbl.setStyleSheet("color: #888888; font-size: 11px; text-transform: uppercase;")
+        self._think_spin = QSpinBox()
+        self._think_spin.setRange(1, 60)
+        self._think_spin.setValue(10)
+        self._think_spin.setSuffix("s")
+        self._think_spin.setFixedWidth(70)
+        self._think_spin.setToolTip(
+            "How long the AI thinks.\n"
+            "Short = fast, rough results.\n"
+            "Long = multiple passes, high precision."
+        )
+
         rethink_row.addWidget(self._rethink_btn)
-        rethink_row.addWidget(depth_lbl)
-        rethink_row.addWidget(self._depth_slider)
-        rethink_row.addWidget(self._depth_val)
-        rethink_row.addWidget(timeout_lbl)
-        rethink_row.addWidget(self._timeout_spin)
+        rethink_row.addWidget(think_lbl)
+        rethink_row.addWidget(self._think_spin)
         rethink_row.addStretch()
         root.addLayout(rethink_row)
 
@@ -455,7 +434,7 @@ class MainWindow(QMainWindow):
         elapsed = _time.perf_counter() - self._rethink_start_time
         self._rethink_btn.setText(f"Thinking{dots}")
         self._status_lbl.setText(
-            f"Depth {self._rethink_depth}, elapsed {elapsed:.1f}s / {self._rethink_timeout}s"
+            f"Thinking... {elapsed:.1f}s / {self._rethink_time}s"
         )
 
     def _on_rethink(self) -> None:
@@ -463,20 +442,16 @@ class MainWindow(QMainWindow):
             return
         import time as _time
         self._rethink_start_time = _time.perf_counter()
-        self._rethink_depth = self._depth_slider.value()
-        self._rethink_timeout = self._timeout_spin.value()
+        self._rethink_time = self._think_spin.value()
 
-        # Animated feedback only (no progress bar — rethink is fast)
         self._rethink_btn.setEnabled(False)
         self._think_dots = 0
         self._think_timer.start(200)
-        self._status_lbl.setText(
-            f"Rethinking depth {self._rethink_depth}, timeout {self._rethink_timeout}s…"
-        )
+        self._status_lbl.setText(f"Thinking... 0.0s / {self._rethink_time}s")
 
         self._rethink_thread = QThread()
         self._rethink_worker = RethinkWorker(
-            self._search_service, self._last_query, self._rethink_depth, self._rethink_timeout
+            self._search_service, self._last_query, self._rethink_time
         )
         self._rethink_worker.moveToThread(self._rethink_thread)
         self._rethink_thread.started.connect(self._rethink_worker.run)
@@ -496,8 +471,7 @@ class MainWindow(QMainWindow):
         self._rethink_btn.setEnabled(True)
         self._display_results(results)
         self._status_lbl.setText(
-            f"{len(results)} results in {elapsed:.1f}s "
-            f"(depth {self._rethink_depth}, timeout {self._rethink_timeout}s)"
+            f"{len(results)} results in {elapsed:.1f}s"
         )
 
     def _on_rethink_error(self, error_msg: str) -> None:

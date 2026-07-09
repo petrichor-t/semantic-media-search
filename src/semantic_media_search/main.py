@@ -69,9 +69,9 @@ def build_application() -> MainWindow:
     image_encoder = ImageEncoder(image_model)
     text_encoder = TextEncoder(text_model)
 
-    # ---- Reranker (use image model as CLIP cross-encoder) ----
-    from semantic_media_search.services.reranker import IterativeReranker
-    reranker = IterativeReranker(image_model)
+    # ---- Reranker (adaptive multi-pass CLIP cross-encoder) ----
+    from semantic_media_search.services.reranker import AdaptiveReranker
+    reranker = AdaptiveReranker(image_model)
 
     # ---- Vector index ----
     indexing_service = IndexingService(
