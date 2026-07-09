@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QThread, QTimer, QUrl, Qt
+from PySide6.QtCore import QThread, QTimer, QUrl, Qt, Signal, QObject, Slot
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
@@ -87,14 +87,6 @@ QComboBox {
 QComboBox:hover {
     border-color: #ffffff;
 }
-QComboBox::drop-down {
-    border: none;
-    width: 20px;
-}
-QComboBox::down-arrow {
-    image: none;
-    border: none;
-}
 QComboBox QAbstractItemView {
     background-color: #0a0a0a;
     border: 1px solid #333333;
@@ -165,10 +157,6 @@ QHeaderView::section {
 QHeaderView {
     background-color: #000000;
 }
-QTableWidget QTableCornerButton::section {
-    background-color: #000000;
-    border-bottom: 1px solid #333333;
-}
 QScrollBar:vertical {
     background: #000000;
     width: 8px;
@@ -178,9 +166,6 @@ QScrollBar::handle:vertical {
     background: #333333;
     border-radius: 4px;
     min-height: 40px;
-}
-QScrollBar::handle:vertical:hover {
-    background: #555555;
 }
 QScrollBar::add-line:vertical,
 QScrollBar::sub-line:vertical {
@@ -200,18 +185,33 @@ QScrollBar::add-line:horizontal,
 QScrollBar::sub-line:horizontal {
     width: 0;
 }
-QFileDialog {
-    background-color: #000000;
-}
-QMessageBox {
-    background-color: #000000;
-    color: #ffffff;
-}
 """
 
 
+class RethinkWorker(QObject):
+    finished = Signal(list)
+    failed = Signal(str)
+
+    def __init__(self, search_service: SearchService, query: str, depth: int, timeout: int):
+        super().__init__()
+        self._service = search_service
+        self._query = query
+        self._depth = depth
+        self._timeout = timeout
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            results = self._service.rerank(
+                self._query, depth=self._depth, timeout_seconds=self._timeout
+            )
+            self.finished.emit(results)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class MainWindow(QMainWindow):
-    """Minimalist black‑theme semantic search with iterative rethink."""
+    """Minimalist black-theme semantic search with iterative rethink."""
 
     def __init__(
         self,
@@ -229,6 +229,7 @@ class MainWindow(QMainWindow):
         self._indexing_thread: QThread | None = None
         self._worker: IndexingWorker | None = None
         self._last_query: str = ""
+        self._rethink_thread: QThread | None = None
         self._think_timer = QTimer()
         self._think_timer.timeout.connect(self._tick_thinking)
         self._think_dots = 0
@@ -236,7 +237,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Semantic Media Search")
         self.setMinimumSize(960, 680)
         self.setStyleSheet(STYLE)
-
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -246,17 +246,15 @@ class MainWindow(QMainWindow):
         root.setSpacing(10)
         root.setContentsMargins(20, 20, 20, 20)
 
-        # ---- Top bar ----
+        # Top bar
         top = QHBoxLayout()
         title = QLabel("Semantic Media Search")
         title.setStyleSheet("font-size: 18px; font-weight: 600; letter-spacing: -0.3px;")
         top.addWidget(title)
         top.addStretch()
-
         device_lbl = QLabel("Device")
         device_lbl.setStyleSheet("font-size: 11px; color: #888888; text-transform: uppercase;")
         top.addWidget(device_lbl)
-
         self._device_combo = QComboBox()
         self._device_combo.addItems(["GPU", "CPU"])
         self._device_combo.setCurrentText(self._device_info)
@@ -264,7 +262,7 @@ class MainWindow(QMainWindow):
         top.addWidget(self._device_combo)
         root.addLayout(top)
 
-        # ---- Folder ----
+        # Folder
         folder_row = QHBoxLayout()
         self._folder_btn = QPushButton("Select Folder")
         self._folder_btn.clicked.connect(self._on_select_folder)
@@ -274,7 +272,7 @@ class MainWindow(QMainWindow):
         folder_row.addWidget(self._folder_lbl, 1)
         root.addLayout(folder_row)
 
-        # ---- Indexing ----
+        # Indexing
         idx_row = QHBoxLayout()
         self._index_btn = QPushButton("Index")
         self._index_btn.setEnabled(False)
@@ -288,7 +286,7 @@ class MainWindow(QMainWindow):
         idx_row.addWidget(self._progress_lbl)
         root.addLayout(idx_row)
 
-        # ---- Search ----
+        # Search
         search_row = QHBoxLayout()
         self._search_input = QLineEdit()
         self._search_input.setPlaceholderText("Search images by description...")
@@ -299,12 +297,11 @@ class MainWindow(QMainWindow):
         search_row.addWidget(self._search_btn)
         root.addLayout(search_row)
 
-        # ---- Rethink ----
+        # Rethink
         rethink_row = QHBoxLayout()
         self._rethink_btn = QPushButton("Rethink")
         self._rethink_btn.setEnabled(False)
         self._rethink_btn.clicked.connect(self._on_rethink)
-
         depth_lbl = QLabel("Depth")
         depth_lbl.setStyleSheet("color: #888888; font-size: 11px; text-transform: uppercase;")
         self._depth_slider = QSlider(Qt.Horizontal)
@@ -314,7 +311,6 @@ class MainWindow(QMainWindow):
         self._depth_val = QLabel("50")
         self._depth_val.setStyleSheet("color: #cccccc; font-size: 11px; min-width: 30px;")
         self._depth_slider.valueChanged.connect(lambda v: self._depth_val.setText(str(v)))
-
         timeout_lbl = QLabel("Timeout")
         timeout_lbl.setStyleSheet("color: #888888; font-size: 11px; text-transform: uppercase; margin-left: 12px;")
         self._timeout_spin = QSpinBox()
@@ -322,7 +318,6 @@ class MainWindow(QMainWindow):
         self._timeout_spin.setValue(5)
         self._timeout_spin.setSuffix("s")
         self._timeout_spin.setFixedWidth(70)
-
         rethink_row.addWidget(self._rethink_btn)
         rethink_row.addWidget(depth_lbl)
         rethink_row.addWidget(self._depth_slider)
@@ -332,12 +327,12 @@ class MainWindow(QMainWindow):
         rethink_row.addStretch()
         root.addLayout(rethink_row)
 
-        # ---- Status ----
+        # Status
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet("color: #666666; font-size: 11px;")
         root.addWidget(self._status_lbl)
 
-        # ---- Table ----
+        # Table
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Name", "Type", "Path", "Score"])
         hdr = self._table.horizontalHeader()
@@ -392,11 +387,9 @@ class MainWindow(QMainWindow):
         self._progress.setRange(0, 0)
         self._progress_lbl.setText("Scanning...")
         self._status_lbl.setText("Indexing…")
-
         self._indexing_thread = QThread()
         self._worker = IndexingWorker(self._indexing_service, self._selected_folder)
         self._worker.moveToThread(self._indexing_thread)
-
         self._indexing_thread.started.connect(self._worker.run)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
@@ -437,11 +430,19 @@ class MainWindow(QMainWindow):
         self._last_query = self._search_input.text().strip()
         if not self._last_query:
             return
+        # Show "searching..." briefly
+        self._search_btn.setText("Searching…")
+        self._search_btn.setEnabled(False)
+        self._search_btn.repaint()
         try:
             results = self._search_service.search(self._last_query)
         except Exception as exc:
             QMessageBox.critical(self, "Search Error", str(exc))
+            self._search_btn.setText("Search")
+            self._search_btn.setEnabled(True)
             return
+        self._search_btn.setText("Search")
+        self._search_btn.setEnabled(True)
         self._display_results(results)
         self._rethink_btn.setEnabled(
             len(results) > 0 and self._search_service.has_reranker
@@ -458,28 +459,40 @@ class MainWindow(QMainWindow):
             return
         depth = self._depth_slider.value()
         timeout = self._timeout_spin.value()
+
+        # Start animation
         self._rethink_btn.setEnabled(False)
         self._think_dots = 0
         self._think_timer.start(200)
         self._status_lbl.setText(f"Rethinking depth {depth}, timeout {timeout}s…")
-        try:
-            results = self._search_service.rerank(
-                self._last_query, depth=depth, timeout_seconds=timeout
-            )
-        except Exception as exc:
-            self._think_timer.stop()
-            self._rethink_btn.setText("Rethink")
-            self._rethink_btn.setEnabled(True)
-            QMessageBox.critical(self, "Rethink Error", str(exc))
-            return
-        finally:
-            self._think_timer.stop()
-            self._rethink_btn.setText("Rethink")
-        self._display_results(results)
-        self._rethink_btn.setEnabled(True)
-        self._status_lbl.setText(
-            f"{len(results)} results — depth {depth}, timeout {timeout}s"
+
+        # Run in background thread so UI stays responsive
+        self._rethink_thread = QThread()
+        self._rethink_worker = RethinkWorker(
+            self._search_service, self._last_query, depth, timeout
         )
+        self._rethink_worker.moveToThread(self._rethink_thread)
+        self._rethink_thread.started.connect(self._rethink_worker.run)
+        self._rethink_worker.finished.connect(self._on_rethink_done)
+        self._rethink_worker.failed.connect(self._on_rethink_error)
+        self._rethink_worker.finished.connect(self._rethink_thread.quit)
+        self._rethink_worker.failed.connect(self._rethink_thread.quit)
+        self._rethink_thread.finished.connect(self._rethink_worker.deleteLater)
+        self._rethink_thread.finished.connect(self._rethink_thread.deleteLater)
+        self._rethink_thread.start()
+
+    def _on_rethink_done(self, results: list) -> None:
+        self._think_timer.stop()
+        self._rethink_btn.setText("Rethink")
+        self._rethink_btn.setEnabled(True)
+        self._display_results(results)
+        self._status_lbl.setText(f"{len(results)} results")
+
+    def _on_rethink_error(self, error_msg: str) -> None:
+        self._think_timer.stop()
+        self._rethink_btn.setText("Rethink")
+        self._rethink_btn.setEnabled(True)
+        QMessageBox.critical(self, "Rethink Error", error_msg)
 
     def _display_results(self, results: list[SearchResult]) -> None:
         self._table.setRowCount(0)
