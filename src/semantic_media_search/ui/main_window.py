@@ -466,14 +466,13 @@ class MainWindow(QMainWindow):
         self._rethink_depth = self._depth_slider.value()
         self._rethink_timeout = self._timeout_spin.value()
 
-        # Show progress bar in indeterminate mode
-        self._progress.setVisible(True)
-        self._progress.setRange(0, 0)
-        self._progress_lbl.setText(f"Rethinking depth {self._rethink_depth}...")
+        # Animated feedback only (no progress bar — rethink is fast)
         self._rethink_btn.setEnabled(False)
         self._think_dots = 0
         self._think_timer.start(200)
-        self._status_lbl.setText(f"Depth {self._rethink_depth}, timeout {self._rethink_timeout}s…")
+        self._status_lbl.setText(
+            f"Rethinking depth {self._rethink_depth}, timeout {self._rethink_timeout}s…"
+        )
 
         self._rethink_thread = QThread()
         self._rethink_worker = RethinkWorker(
@@ -493,19 +492,16 @@ class MainWindow(QMainWindow):
         import time as _time
         elapsed = _time.perf_counter() - self._rethink_start_time
         self._think_timer.stop()
-        self._progress.setVisible(False)
-        self._progress_lbl.setText("")
         self._rethink_btn.setText("Rethink")
         self._rethink_btn.setEnabled(True)
         self._display_results(results)
         self._status_lbl.setText(
-            f"{len(results)} results in {elapsed:.1f}s (depth {self._rethink_depth})"
+            f"{len(results)} results in {elapsed:.1f}s "
+            f"(depth {self._rethink_depth}, timeout {self._rethink_timeout}s)"
         )
 
     def _on_rethink_error(self, error_msg: str) -> None:
         self._think_timer.stop()
-        self._progress.setVisible(False)
-        self._progress_lbl.setText("")
         self._rethink_btn.setText("Rethink")
         self._rethink_btn.setEnabled(True)
         QMessageBox.critical(self, "Rethink Error", error_msg)
